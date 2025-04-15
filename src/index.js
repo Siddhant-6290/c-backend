@@ -9,6 +9,21 @@ dotenv.config({
 })
 
 connectDB()
+.then(()=>{
+
+    // Handle runtime server errors
+    app.on("error", (error) => {
+        console.error("App Error:", error);
+        throw error;
+      });
+
+    app.listen(process.env.PORT || 8000,()=>{
+        console.log(`server is running on port ${process.env.PORT}`);
+    })
+})
+.catch((err)=>{
+    console.log("Db connection failed !!!",err);
+})
 
 
 
@@ -18,6 +33,14 @@ connectDB()
 // (async()=>{
 // try {
 //     await mongoose.connect(`${process.env.MONGODB_URI}/${DB_NAME}`)
+// app.on("error",(error)=>{
+//     console.log(" ERRR:",error);
+//     throw error;
+// })
+// app.listen(process.env.PORT || 8000,()=>{
+//     console.log(`server is running on port ${process.env.PORT}`);
+// })
+
 // } catch (error) {
 //     console.error("Error: ",error)
 //     throw error
