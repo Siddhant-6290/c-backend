@@ -4,6 +4,24 @@ import { User } from "../models/user.model.js";
 import {uploadOnCloudinary} from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 
+
+const generateAccessAndRefreshTokens= async(userId) => {
+    try {
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        user.refreshToken=refreshToken;
+        user.save({ validateBeforeSave: false });
+        return {accessToken,refreshToken}
+
+    } catch (error) {
+        throw new ApiError(500,"Something went wrong while generating refresh and access token");
+    }
+}
+
+
+
 const registerUser = asyncHandeller(async(req,res) => {
     // res.status(200).json({
     //     message:"ok"
@@ -22,6 +40,8 @@ const registerUser = asyncHandeller(async(req,res) => {
 
     const {fullName,email,username,password} = req.body
     console.log(email)
+    // console.log(req.body); -- see the result, only has text data no files
+    
 
     // validation-- empty check
     if(
@@ -32,7 +52,7 @@ const registerUser = asyncHandeller(async(req,res) => {
     }
 
     // now check if user already exist
-        const existedUser = User.findOne({
+        const existedUser = await User.findOne({
                 $or:[{username},{email}]
             })
 
@@ -42,8 +62,18 @@ const registerUser = asyncHandeller(async(req,res) => {
 
         // check for coverimage and avatar
 
+        // console.log("printing req.files",req.files);
+        
+
         const avatarLocalPath = req.files?.avatar[0]?.path;  // on server
-        const coverImageLocalPath=req.files?.coverImage[0]?.path;
+        // const coverImageLocalPath=req.files?.coverImage[0]?.path;
+
+        // classic check for coverImage coz we have not checked for it, if we do not send it then
+        // we will get undefined,which gives error
+        let coverImageLocalPath;
+        if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length>0 ){
+            coverImageLocalPath=req.files.coverImage[0].path;
+        }
 
         if(!avatarLocalPath){
             throw new ApiError(400,"Avatar is required");
@@ -59,7 +89,7 @@ const registerUser = asyncHandeller(async(req,res) => {
         }
 
         // database entry of avatar
-     const user = User.create({
+     const user = await User.create({
             fullName,
             avatar: avatar.url,  // the avatar give us whole response on cloudinary(util) we want url
             coverImage: coverImage?.url || "", //need to check if coverimage exist coz there were no checks prior like avatar had
@@ -87,8 +117,101 @@ const registerUser = asyncHandeller(async(req,res) => {
 
 })
 
+const loginUser = asyncHandeller(async(req,res) => {
+    // req.body->data
+    // username or  email ->what to use for authntication
+    // find the user 
+    // password check
+    // access and refresh tokens
+    // send cookie
 
-export {registerUser};
+    const {email,username,password}=req.body;
+
+    if(!email || !username){
+        throw new ApiError(400,"username or email is required")
+    }
+
+    // find the user with given username or email
+    const user = await User.findOne({
+        $or:[{username},{email}]
+    })
+
+    if(!user){
+        throw new ApiError(400,'user does not exist')
+    }
+
+    // if user is found check for password -> can be done using bcrypt 
+    const isPasswordValid = await user.isPasswordCorrect(password)
+
+    // if not valid
+    if(!isPasswordValid){
+        throw new ApiError(401,'Invalid user credentials')
+    }
+
+    // if valid create RT and AT -> creating AT&RT is very commmon so we create seperate method 
+
+    const {accessToken,refreshToken} = await generateAccessAndRefreshTokens(user._id)
+
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+    const options = {
+        httpOnly : true,
+        secure : true
+    }
+
+  
+    return res
+    .status(200)
+    .cookie("accessToken",accessToken,options)
+    .cookie("refreshToken",refreshToken,options)
+    .json(
+        new ApiResponse(
+            200,
+            {
+                user: loggedInUser,accessToken,refreshToken
+            },
+            "User LoggedIn sucessfully"
+        )
+    )
+})
+
+
+
+const logoutUser = asyncHandeller(async(req,res) => {
+
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                refreshToken: undefined
+            },
+            
+        },
+        {
+            // to get new val : undefined
+            new: true
+        }
+    )
+
+    const options = {
+        httpOnly : true,
+        secure : true
+    }
+
+    return res
+    .status(200)
+    .clearCookie("accessToken",options)
+    .clearCookie("refreshToken",options)
+    .json(new ApiResponse(200,{},"User logged Out"))
+
+    
+})
+
+
+export {
+    registerUser,
+    loginUser,
+    logoutUser
+};
 
 // manually
 // app.get('/route', async (req, res, next) => {
@@ -106,3 +229,6 @@ export {registerUser};
 //   // if any error happens, it's automatically caught
 // }));
   
+
+
+

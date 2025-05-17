@@ -34,14 +34,14 @@ const userSchema= new mongoose.Schema(
         type:String, //cloudnary url        
     },
     watchHistory:[{
-        type:Schema.Types.ObjectId,
-        ref:"Video"
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"video"
     }],
     password:{
         type:String,
         required:[true,'Password is required']
     },
-    refresgToken:{
+    refreshToken:{
         type:String,
     }
 
@@ -57,7 +57,7 @@ userSchema.pre("save",async function (next){
         next()
 })
 
-// comparing password- original and hashed
+// comparing password- original and hashed (custom method)
 userSchema.methods.isPasswordCorrect= async function (password){
     return await bcrypt.compare(password,this.password)
     // passwors->user, this.password->encrypted
@@ -65,7 +65,7 @@ userSchema.methods.isPasswordCorrect= async function (password){
 
 // methods to generate access and refresh tokens
 userSchema.methods.generateAccessToken = function(){
-    jwt.sign(
+    return jwt.sign(
         {
             // payload
         _id:this._id,
@@ -81,7 +81,7 @@ userSchema.methods.generateAccessToken = function(){
 )
 }
 userSchema.methods.generateRefreshToken = function(){
-    jwt.sign(
+    return jwt.sign(
         {
             // payload
         _id:this._id,
