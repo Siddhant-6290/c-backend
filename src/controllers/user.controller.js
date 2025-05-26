@@ -284,7 +284,7 @@ const updateAccountDetails = asyncHandeller(async(req,res)=>{
     if(!fullName || !email){
         throw new ApiError(400, "All the fields are required")
     }
-    const user = User.findByIdAndUpdate(
+    const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set: {
@@ -351,6 +351,90 @@ const updateUserCoverImage = asyncHandeller(async (req,res)=>{
     .json(new ApiResponse(200,user,"Cover Image updated sucessfully"));
 })
 
+
+// agg pipeleines
+const getUserChannelProfile = asyncHandeller(async(req,res)=>{
+
+    // if we want profile of channel we go to url of that channel
+    const {username} = req.params
+     
+    if(!username?.trim()){
+        throw new ApiError(400,"username is missing")
+    }
+
+    // we can find doc by User.find({username}) then get id then agg -> we can directly apply
+    // agg->match
+
+   const channel = await User.aggregate([
+        {
+            $match:{
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            // finding subscriber- lookup
+            $lookup:{
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+
+        },
+        {
+            // how many i have subscribed
+            $lookup:{
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            // adding some field in user
+            $addFields:{
+                subscriberCount: {
+                    $size: "$subscribers"
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: {$in: [req.user?._id,"$subscribers.subscriber"]},
+                        then:true,
+                        else:false
+                    }
+                }
+            }
+        },
+        {
+            // now we want to show only selected things from user
+            $project:{
+                fullName:1,
+                username:1,
+                subscriberCount:1,
+                channelsSubscribedToCount:1,
+                isSubscribed:1,
+                avatar:1,
+                coverImage:1,
+                email:1
+
+            }
+        }
+    ])
+
+    if(!channel?.length){
+        throw new ApiError(404,"channel does not exist")
+    }
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200,channel[0],"user channel fetched sucessfully")
+    )
+})
+
 export {
     registerUser,
     loginUser,
@@ -360,7 +444,8 @@ export {
     getCurrentUser,
     updateAccountDetails,
     updateUserAvatar,
-    updateUserCoverImage
+    updateUserCoverImage,
+    getUserChannelProfile
 };
 
 // manually
